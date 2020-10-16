@@ -1,0 +1,107 @@
+# GENERATED FILE. Use with Kubernetes 1.9+
+# TO UPDATE, modify files in install/kubernetes/templates and run install/updateVersion.sh
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edgemicro-inject
+  namespace: edgemicro-system
+data:
+  config: |
+    policy: enabled
+    template: |-
+      initContainers:
+      - name: edgemicro-init
+        image: gcr.io/apigee-microgateway/edgemicro_proxy_init:latest
+        args:
+        - "-p"
+        - "8000"
+        - "-u"
+        - "1001"
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+        imagePullPolicy: Always
+      containers:
+      - name: edge-microgateway
+        image: gcr.io/apigee-microgateway/edgemicro:latest
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 101
+          runAsGroup: 101
+        ports:
+        - containerPort: 8000
+        env:
+        - name: EDGEMICRO_ORG
+          valueFrom:
+            secretKeyRef:
+              name: mgwsecret
+              key: mgorg
+        - name: EDGEMICRO_ENV
+          valueFrom:
+            secretKeyRef:
+              name: mgwsecret
+              key: mgenv
+        - name: EDGEMICRO_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mgwsecret
+              key: mgkey
+        - name: EDGEMICRO_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: mgwsecret
+              key: mgsecret
+        - name: EDGEMICRO_CONFIG
+          valueFrom:
+            secretKeyRef:
+              name: mgwsecret
+              key: mgconfig
+        - name: EDGEMICRO_CONFIG_DIR
+          value: /opt/apigee/.edgemicro
+        - name: EDGEMICRO_LOCAL_PROXY
+          value: "1"
+        - name: EDGEMICRO_DECORATOR
+          value: "1"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CONTAINER_PORT
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['containerPort']
+        - name: INSTANCE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        imagePullPolicy: Always
+        resources:
+          limits:
+            memory: "2048Mi"
+            cpu: "1"
+          requests:
+            memory: "1024Mi"
+            cpu: "0.5"
+        volumeMounts:
+        - mountPath: /etc/istio/proxy
+          name: edgemicro-proxy
+        - mountPath: /etc/certs/
+          name: edgemicro-certs
+          readOnly: true
+      volumes:
+      - emptyDir:
+          medium: Memory
+        name: edgemicro-proxy
+      - name: edgemicro-certs
+        secret:
+          optional: true
+          {{ if eq .Spec.ServiceAccountName "" -}}
+          secretName: istio.default
+          {{ else -}}
+          secretName: {{ printf "istio.%s" .Spec.ServiceAccountName }}
+          {{ end -}}
